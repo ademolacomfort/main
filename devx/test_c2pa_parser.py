@@ -114,6 +114,16 @@ class TestC2PAParser(unittest.TestCase):
         self.assertEqual(res.status, STATUS_REVOKED)
         self.assertEqual(res.error_code, ERR_REVOKED)
 
+    def test_invalid_signature(self) -> None:
+        payload = {
+            "specVersion": "c2pa-v1",
+            "signatureValid": False,
+            "assertions": [],
+        }
+        res = parse_c2pa_manifest(payload)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.error_code, "ERR_INVALID_SIGNATURE")
+
     def test_redaction_of_sensitive_keys(self) -> None:
         payload = {
             "specVersion": "c2pa-v1",

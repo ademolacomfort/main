@@ -203,6 +203,16 @@ def parse_c2pa_manifest(input_data: str | bytes | dict[str, Any]) -> C2PAParseRe
             error_message="manifest payload structure is invalid",
         )
 
+    # Check signature integrity
+    signature_valid = parsed_dict.get("signatureValid") if "signatureValid" in parsed_dict else manifest_data.get("signatureValid")
+    if signature_valid is False:
+        return C2PAParseResult(
+            ok=False,
+            status=STATUS_MALFORMED,
+            error_code=ERR_INVALID_SIGNATURE,
+            error_message="manifest signature or integrity verification failed",
+        )
+
     # Check expiration / revocation status
     status_claim = parsed_dict.get("status") or manifest_data.get("status")
     if status_claim == "expired":
