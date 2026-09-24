@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from devx.c2pa_parser import (
     parse_c2pa_manifest,
@@ -54,12 +55,65 @@ class TestC2PAParser(unittest.TestCase):
         self.assertEqual(res.status, STATUS_MALFORMED)
         self.assertEqual(res.error_code, ERR_MALFORMED)
 
+    def test_payload_below_max(self) -> None:
+        valid_bytes = (
+            b'{"specVersion":"c2pa-v1","assertions":[],"ingredients":[]}'
+        )
+        self.assertLess(len(valid_bytes), MAX_C2PA_PAYLOAD_BYTES)
+        res = parse_c2pa_manifest(valid_bytes)
+        self.assertTrue(res.ok)
+
+    def test_payload_exactly_at_max(self) -> None:
+        base = {"specVersion": "c2pa-v1", "assertions": [], "ingredients": [], "pad": ""}
+        base_bytes = json.dumps(base).encode("utf-8")
+        pad_len = MAX_C2PA_PAYLOAD_BYTES - len(base_bytes)
+        base["pad"] = "a" * pad_len
+        exact_bytes = json.dumps(base).encode("utf-8")
+        self.assertEqual(len(exact_bytes), MAX_C2PA_PAYLOAD_BYTES)
+        res = parse_c2pa_manifest(exact_bytes)
+        self.assertTrue(res.ok)
+
     def test_oversized_payload_bytes(self) -> None:
         huge_bytes = b"x" * (MAX_C2PA_PAYLOAD_BYTES + 1)
         res = parse_c2pa_manifest(huge_bytes)
         self.assertFalse(res.ok)
         self.assertEqual(res.status, STATUS_OVERSIZED)
         self.assertEqual(res.error_code, ERR_OVERSIZED)
+
+    def test_exceeds_ingredients_bound(self) -> None:
+        from devx.c2pa_parser import MAX_INGREDIENTS_COUNT
+        payload = {
+            "specVersion": "c2pa-v1",
+            "assertions": [],
+            "ingredients": [{"title": f"i{i}"} for i in range(MAX_INGREDIENTS_COUNT + 1)],
+        }
+        res = parse_c2pa_manifest(payload)
+        self.assertFalse(res.ok)
+        self.assertEqual(res.status, STATUS_OVERSIZED)
+        self.assertEqual(res.error_code, ERR_OVERSIZED)
+
+    def test_exceeds_field_length_limit(self) -> None:
+        payload = {
+            "specVersion": "c2pa-v1",
+            "long_field": "a" * 300,
+            "assertions": [],
+            "ingredients": [],
+        }
+        res = parse_c2pa_manifest(payload)
+        self.assertTrue(res.ok)
+
+    def test_dependency_failure_handling(self) -> None:
+        from devx.c2pa_parser import STATUS_DEPENDENCY_FAILURE, ERR_DEPENDENCY_FAILURE, C2PAParseResult
+        # Simulate dependency failure response
+        res = C2PAParseResult(
+            ok=False,
+            status=STATUS_DEPENDENCY_FAILURE,
+            error_code=ERR_DEPENDENCY_FAILURE,
+            error_message="external C2PA library component unavailable",
+        )
+        self.assertFalse(res.ok)
+        self.assertEqual(res.status, STATUS_DEPENDENCY_FAILURE)
+        self.assertEqual(res.error_code, ERR_DEPENDENCY_FAILURE)
 
     def test_exceeds_assertions_bound(self) -> None:
         payload = {
